@@ -1,17 +1,52 @@
 import express from "express";
-import { User } from "../models/user.js";
+import Partner from "../models/partner.js";
 
 const router = express.Router();
 
-// Public: list approved partners
-router.get("/", async (_req, res) => {
+// GET /api/partners/public/ -> public list
+router.get("/", async (req, res) => {
   try {
-    const partners = await User.find({ role: "partner", isApproved: true }).select("-password").sort({ createdAt: -1 });
-    return res.status(200).json(partners);
-  } catch (error) {
-    return res.status(500).json({ error: error.message });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+    const skip = (page - 1) * limit;
+
+    const filter = {};
+    if (req.query.name) filter.name = new RegExp(req.query.name, "i");
+
+    const total = await Partner.countDocuments(filter);
+    const data = await Partner.find(filter)
+      .skip(skip)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    res.json({
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+      data,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/partners/public/:id -> public single partner
+router.get("/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    if (!id.match(/^[0-9a-fA-F]{24}$/))
+      return res.status(400).json({ error: "Invalid ID format" });
+
+    const partner = await Partner.findById(id);
+    if (!partner)
+      return res.status(404).json({ error: "Partner not found." });
+
+    res.json(partner);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 export default router;
-
