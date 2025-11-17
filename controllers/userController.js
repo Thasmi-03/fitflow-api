@@ -1,6 +1,9 @@
 import { User } from "../models/user.js";
 import mongoose from "mongoose";
 
+/**
+ * Get paginated list of users (admin)
+ */
 export const getAllUsers = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -31,13 +34,16 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
-// Get user by ID
+/**
+ * Get user by ID (admin or specific route protection)
+ */
 export const getUserById = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id))
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid ID format" });
 
-    const user = await User.findById(req.params.id).select("-password");
+    const user = await User.findById(id).select("-password");
 
     if (!user) return res.status(404).json({ error: "User not found." });
 
@@ -47,7 +53,31 @@ export const getUserById = async (req, res) => {
   }
 };
 
-// Create a new user
+/**
+ * Get profile for the logged-in user (requires verifyToken middleware)
+ * - verifyToken must set req.user (e.g., req.user.id or req.user._id)
+ */
+export const getMyProfile = async (req, res) => {
+  try {
+    // support both shapes: req.user.id or req.user._id
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    if (!mongoose.Types.ObjectId.isValid(userId))
+      return res.status(400).json({ error: "Invalid ID format" });
+
+    const user = await User.findById(userId).select("-password");
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Create a new user (admin)
+ */
 export const createUser = async (req, res) => {
   try {
     const newUser = new User(req.body);
@@ -70,13 +100,16 @@ export const createUser = async (req, res) => {
   }
 };
 
-// Update a user by ID
+/**
+ * Update user by ID (admin)
+ */
 export const updateUser = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id))
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid ID format" });
 
-    const updatedUser = await User.findByIdAndUpdate(req.params.id, req.body, {
+    const updatedUser = await User.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
     }).select("-password");
@@ -99,13 +132,16 @@ export const updateUser = async (req, res) => {
   }
 };
 
-// Delete a user by ID
+/**
+ * Delete user by ID (admin)
+ */
 export const deleteUser = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id))
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid ID format" });
 
-    const deletedUser = await User.findByIdAndDelete(req.params.id).select("-password");
+    const deletedUser = await User.findByIdAndDelete(id).select("-password");
 
     if (!deletedUser) return res.status(404).json({ error: "User not found." });
 
