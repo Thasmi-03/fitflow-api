@@ -3,7 +3,7 @@ import { Payment } from "../models/payment.js";
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
-// ===== Build filter from query (status, user, search) =====
+// ===== Build filter from query (status, user, search, date range) =====
 const buildPaymentFilter = (query, user) => {
   const filters = [];
 
@@ -27,6 +27,48 @@ const buildPaymentFilter = (query, user) => {
         { currency: { $regex: q, $options: "i" } },
       ],
     });
+  }
+
+  // --- Date filtering: from, to (range) and date (single day) ---
+  const makeValidDate = (s) => {
+    if (!s) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  // If `date` provided => treat as that whole day
+  if (query.date) {
+    const d = makeValidDate(query.date);
+    if (d) {
+      const start = new Date(d);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(d);
+      end.setHours(23, 59, 59, 999);
+      filters.push({ createdAt: { $gte: start, $lte: end } });
+    }
+  } else {
+    // from / to range
+    const dateFilter = {};
+    if (query.from) {
+      const from = makeValidDate(query.from);
+      if (from) {
+        // if string was date-only (YYYY-MM-DD) it's at 00:00:00, which is fine for $gte
+        dateFilter.$gte = from;
+      }
+    }
+    if (query.to) {
+      const to = makeValidDate(query.to);
+      if (to) {
+        // if user passed date-only (YYYY-MM-DD) convert to end of day to be inclusive
+        if (/^\d{4}-\d{2}-\d{2}$/.test(query.to)) {
+          to.setHours(23, 59, 59, 999);
+        }
+        dateFilter.$lte = to;
+      }
+    }
+    if (Object.keys(dateFilter).length) {
+      filters.push({ createdAt: dateFilter });
+    }
   }
 
   if (filters.length === 0) return {};
