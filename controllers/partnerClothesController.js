@@ -1,7 +1,15 @@
+// server/Api/controllers/partnerClothesController.js
 import mongoose from "mongoose";
 import { PartnerCloth } from "../models/partnerClothes.js";
 
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+/** Check if valid ObjectId */
+const isValidObjectId = (id) => {
+  try {
+    return mongoose.Types.ObjectId.isValid(id);
+  } catch {
+    return false;
+  }
+};
 
 /** Pagination helper */
 function parsePagination(query) {
@@ -11,36 +19,7 @@ function parsePagination(query) {
   return { page, limit, skip };
 }
 
-/** Build filter from query */
-function buildFilterFromQuery(query, extras = {}) {
-  const filter = { ...extras };
-
-  if (query.search) {
-    const q = query.search.trim();
-    const regex = { $regex: q, $options: "i" };
-    filter.$or = [{ name: regex }, { color: regex }, { category: regex }];
-  }
-
-  if (query.category) filter.category = query.category;
-  if (query.color) filter.color = { $regex: query.color, $options: "i" };
-
-  if (query.minPrice || query.maxPrice) {
-    filter.price = {};
-    if (query.minPrice != null) filter.price.$gte = Number(query.minPrice);
-    if (query.maxPrice != null) filter.price.$lte = Number(query.maxPrice);
-  }
-
-  if (query.ownerId && isValidObjectId(query.ownerId)) {
-    filter.ownerId = query.ownerId;
-  }
-
-  if (query.visibility) filter.visibility = query.visibility;
-  if (query.ownerType) filter.ownerType = query.ownerType;
-
-  return filter;
-}
-
-/** Parse sort string like "createdAt:desc,price:asc" */
+/** Parse sort string */
 function parseSort(sortStr) {
   if (!sortStr) return { createdAt: -1 };
   const sort = {};
@@ -52,7 +31,35 @@ function parseSort(sortStr) {
   return sort;
 }
 
-/** ---------------------- CRUD & LIST FUNCTIONS ---------------------- **/
+/** Build filter from query */
+function buildFilterFromQuery(query, extras = {}) {
+  const filters = [];
+  if (extras && Object.keys(extras).length) filters.push(extras);
+
+  if (query.search) {
+    const q = query.search.trim();
+    const or = [
+      { name: { $regex: q, $options: "i" } },
+      { color: { $regex: q, $options: "i" } },
+      { category: { $regex: q, $options: "i" } },
+    ];
+    filters.push({ $or: or });
+  }
+
+  if (query.color) filters.push({ color: { $regex: query.color.trim(), $options: "i" } });
+  if (query.category) filters.push({ category: { $regex: query.category.trim(), $options: "i" } });
+
+  if (query.minPrice || query.maxPrice) {
+    const price = {};
+    if (query.minPrice) price.$gte = Number(query.minPrice);
+    if (query.maxPrice) price.$lte = Number(query.maxPrice);
+    filters.push({ price });
+  }
+
+  if (filters.length === 1) return filters[0];
+  if (filters.length > 1) return { $and: filters };
+  return {};
+}
 
 /** Create cloth */
 export const createCloth = async (req, res) => {
@@ -60,10 +67,8 @@ export const createCloth = async (req, res) => {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     if (req.user.role !== "partner") return res.status(403).json({ error: "Partner role required" });
 
-    const { name, color, category, price, image } = req.body;
-    if (!name || !color || !category) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
+    const { name, color, category, price, image, visibility } = req.body;
+    if (!name || !color || !category) return res.status(400).json({ error: "Missing required fields" });
 
     const cloth = new PartnerCloth({
       name,
@@ -73,12 +78,13 @@ export const createCloth = async (req, res) => {
       image: image || "https://yourcdn.com/default-cloth.jpg",
       ownerType: "partner",
       ownerId: req.user._id,
-      visibility: "public",
+      visibility: visibility || "public",
     });
 
     const saved = await cloth.save();
     res.status(201).json({ message: "Cloth created", cloth: saved });
   } catch (error) {
+    console.error("Error in createCloth:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -101,6 +107,7 @@ export const getClothById = async (req, res) => {
 
     res.status(200).json(cloth);
   } catch (error) {
+    console.error("Error in getClothById:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -122,6 +129,7 @@ export const updateCloth = async (req, res) => {
     const updated = await PartnerCloth.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
     res.status(200).json({ message: "Cloth updated", cloth: updated });
   } catch (error) {
+    console.error("Error in updateCloth:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -143,11 +151,12 @@ export const deleteCloth = async (req, res) => {
     await PartnerCloth.findByIdAndDelete(id);
     res.status(200).json({ message: "Cloth deleted" });
   } catch (error) {
+    console.error("Error in deleteCloth:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-/** List public cloths with search/filter/pagination/sort */
+/** List public cloths */
 export const getPublicCloths = async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
@@ -161,8 +170,12 @@ export const getPublicCloths = async (req, res) => {
     ]);
 
     const pages = Math.max(1, Math.ceil(total / limit));
-    res.status(200).json({ meta: { total, page, limit, pages }, data: clothes });
+    res.status(200).json({
+      meta: { total, page, limit, pages },
+      data: clothes,
+    });
   } catch (error) {
+    console.error("Error in getPublicCloths:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -174,8 +187,9 @@ export const getMyCloths = async (req, res) => {
 
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
-    const extras = { ownerId: req.user._id };
-    const filter = buildFilterFromQuery(req.query, extras);
+
+    const ownerExtras = { ownerId: new mongoose.Types.ObjectId(req.user._id) };
+    const filter = buildFilterFromQuery(req.query, ownerExtras);
 
     const [total, clothes] = await Promise.all([
       PartnerCloth.countDocuments(filter),
@@ -183,13 +197,17 @@ export const getMyCloths = async (req, res) => {
     ]);
 
     const pages = Math.max(1, Math.ceil(total / limit));
-    res.status(200).json({ meta: { total, page, limit, pages }, data: clothes });
+    res.status(200).json({
+      meta: { total, page, limit, pages },
+      data: clothes,
+    });
   } catch (error) {
+    console.error("Error in getMyCloths:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-/** Suggestions for stylers */
+/** Get suggestions for styler */
 export const getSuggestions = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -206,8 +224,12 @@ export const getSuggestions = async (req, res) => {
     ]);
 
     const pages = Math.max(1, Math.ceil(total / limit));
-    res.status(200).json({ meta: { total, page, limit, pages }, data: suggestions });
+    res.status(200).json({
+      meta: { total, page, limit, pages },
+      data: suggestions,
+    });
   } catch (error) {
+    console.error("Error in getSuggestions:", error);
     res.status(500).json({ error: error.message });
   }
 };

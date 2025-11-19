@@ -1,3 +1,4 @@
+// Api/models/partnerClothes.js
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
@@ -15,20 +16,18 @@ const PartnerClothSchema = new Schema(
     ownerType: { type: String, enum: ["partner"], default: "partner" },
     ownerId: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Partner",
       required: true,
       index: true,
     },
-    visibility: { type: String, enum: ["public"], default: "public" },
+    visibility: { type: String, enum: ["public", "private"], default: "public" },
   },
   { timestamps: true }
 );
 
-//  search optimization
+// text index for search and fields for sorting/filtering
 PartnerClothSchema.index({ name: "text", color: "text", category: "text" });
-
-//  useful for filtering/sorting
-PartnerClothSchema.index({ ownerId: 1, category: 1 });
+PartnerClothSchema.index({ price: 1 });
 PartnerClothSchema.index({ visibility: 1, ownerType: 1, createdAt: -1 });
 
 export const PartnerCloth = mongoose.model("PartnerCloth", PartnerClothSchema);
