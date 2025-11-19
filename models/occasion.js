@@ -13,7 +13,11 @@ const OccasionSchema = new Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
+// Indexes for better search performance
 OccasionSchema.index({ userId: 1, date: 1, type: 1 });
-
+OccasionSchema.index({ title: 'text', location: 'text', dressCode: 'text', notes: 'text' });
+OccasionSchema.index({ type: 1 });
+OccasionSchema.index({ dressCode: 1 });
+OccasionSchema.index({ date: 1 });
 
 export const Occasion = mongoose.model("Occasion", OccasionSchema);

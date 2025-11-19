@@ -13,22 +13,70 @@ export const getAllOccasions = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
     const skip = (page - 1) * limit;
 
+    // Build filter object
     const filter = {};
     
+    // User-based filtering
     if (req.user.role !== "admin") {
       filter.userId = req.user._id;
     } else {
       if (req.query.user) filter.userId = req.query.user;
     }
     
+    // Existing filters
     if (req.query.type) filter.type = req.query.type;
+    
+    // NEW: Date range filtering
+    if (req.query.startDate || req.query.endDate) {
+      filter.date = {};
+      if (req.query.startDate) {
+        filter.date.$gte = new Date(req.query.startDate);
+      }
+      if (req.query.endDate) {
+        filter.date.$lte = new Date(req.query.endDate);
+      }
+    }
+    
+    // NEW: Location filtering
+    if (req.query.location) {
+      filter.location = { $regex: req.query.location, $options: 'i' };
+    }
+    
+    // NEW: Dress code filtering
+    if (req.query.dressCode) {
+      filter.dressCode = { $regex: req.query.dressCode, $options: 'i' };
+    }
+
+    // NEW: Search functionality (searches in title, location, dressCode, notes)
+    if (req.query.search) {
+      const searchRegex = { $regex: req.query.search, $options: 'i' };
+      filter.$or = [
+        { title: searchRegex },
+        { location: searchRegex },
+        { dressCode: searchRegex },
+        { notes: searchRegex }
+      ];
+    }
 
     const total = await Occasion.countDocuments(filter);
+
+    // NEW: Sorting options
+    let sortOption = { date: -1 }; // default sort by date descending
+    
+    if (req.query.sort) {
+      const sortField = req.query.sort;
+      const sortOrder = req.query.order === 'asc' ? 1 : -1;
+      
+      const allowedSortFields = ['title', 'date', 'type', 'location', 'dressCode', 'createdAt'];
+      if (allowedSortFields.includes(sortField)) {
+        sortOption = { [sortField]: sortOrder };
+      }
+    }
 
     const occasions = await Occasion.find(filter)
       .skip(skip)
       .limit(limit)
-      .sort({ date: -1 })
+      .sort(sortOption)
       .populate("userId", "-password")
       .populate("clothesList");
 
@@ -95,16 +143,15 @@ export const createOccasion = async (req, res) => {
     }
 
     const occasion = new Occasion({
-  userId: req.user._id,
-  title,
-  type: type || "other",
-  date,
-  location: location || "",
-  dressCode: dressCode || "",
-  notes: notes || "",
-  clothesList: clothesList || [],  
-});
-
+      userId: req.user._id,
+      title,
+      type: type || "other",
+      date,
+      location: location || "",
+      dressCode: dressCode || "",
+      notes: notes || "",
+      clothesList: clothesList || [],  
+    });
 
     const saved = await occasion.save();
     await saved.populate(["userId", "clothesList"]);
