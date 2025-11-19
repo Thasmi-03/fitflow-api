@@ -94,15 +94,12 @@ export const register = async (req, res) => {
       
       return res.status(201).json({
         message,
-        token,
-        user: userResponse,
       }); 
     }
 
     // For users that need approval (partners and subsequent admins)
     res.status(201).json({
-      message: "User registered successfully. Waiting for admin approval.",
-      user: userResponse,
+      message: "User registered successfully. Waiting for admin approval."
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
