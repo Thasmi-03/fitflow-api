@@ -3,6 +3,45 @@ import { Payment } from "../models/payment.js";
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+// ===== Build filter from query (status, user, search) =====
+const buildPaymentFilter = (query, user) => {
+  const filters = [];
+
+  // User role: admin sees all, others see own
+  if (user.role !== "admin") {
+    filters.push({ userId: user._id });
+  } else if (query.user && isValidObjectId(query.user)) {
+    filters.push({ userId: query.user });
+  }
+
+  // Filter by status
+  if (query.status) filters.push({ status: query.status });
+
+  // Search: description, method, currency
+  if (query.search) {
+    const q = query.search.trim();
+    filters.push({
+      $or: [
+        { description: { $regex: q, $options: "i" } },
+        { method: { $regex: q, $options: "i" } },
+        { currency: { $regex: q, $options: "i" } },
+      ],
+    });
+  }
+
+  if (filters.length === 0) return {};
+  if (filters.length === 1) return filters[0];
+  return { $and: filters };
+};
+
+// ===== PAGINATION HELPER =====
+const parsePagination = (query) => {
+  const page = Math.max(1, parseInt(query.page || "1", 10));
+  const limit = Math.min(Math.max(1, parseInt(query.limit || "10", 10)), 50);
+  const skip = (page - 1) * limit;
+  return { page, limit, skip };
+};
+
 // ===== CREATE PAYMENT =====
 export const createPayment = async (req, res) => {
   try {
@@ -10,9 +49,8 @@ export const createPayment = async (req, res) => {
 
     const { amount, currency, method, status, description } = req.body || {};
 
-    if (amount === undefined || amount === null) {
+    if (amount === undefined || amount === null)
       return res.status(400).json({ error: "Missing required field: amount" });
-    }
 
     const payment = new Payment({
       userId: req.user._id,
@@ -24,7 +62,6 @@ export const createPayment = async (req, res) => {
     });
 
     const saved = await payment.save();
-
     const populated = await Payment.findById(saved._id).populate("userId", "-password");
 
     res.status(201).json({ message: "Payment created", payment: populated });
@@ -34,28 +71,15 @@ export const createPayment = async (req, res) => {
   }
 };
 
-// ===== GET ALL PAYMENTS =====
+// ===== GET ALL PAYMENTS (with pagination, filter, search) =====
 export const getAllPayments = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
 
-    const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 10), 50);
-    const skip = (page - 1) * limit;
-
-    const filter = {};
-
-    // Admin sees all, others see only their own
-    if (req.user.role !== "admin") {
-      filter.userId = req.user._id;
-    } else if (req.query.user && isValidObjectId(req.query.user)) {
-      filter.userId = req.query.user;
-    }
-
-    if (req.query.status) filter.status = req.query.status;
+    const { page, limit, skip } = parsePagination(req.query);
+    const filter = buildPaymentFilter(req.query, req.user);
 
     const total = await Payment.countDocuments(filter);
-
     const payments = await Payment.find(filter)
       .skip(skip)
       .limit(limit)
@@ -64,10 +88,7 @@ export const getAllPayments = async (req, res) => {
       .lean();
 
     res.status(200).json({
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
       data: payments,
     });
   } catch (error) {
@@ -79,20 +100,16 @@ export const getAllPayments = async (req, res) => {
 // ===== GET PAYMENT BY ID =====
 export const getPaymentById = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
 
     const payment = await Payment.findById(id).populate("userId", "-password");
-
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
-    const paymentUserId = payment.userId?._id || payment.userId;
-
-    if (req.user.role !== "admin" && String(paymentUserId) !== String(req.user._id)) {
+    // Only admin or owner can view
+    if (req.user.role !== "admin" && String(payment.userId._id) !== String(req.user._id))
       return res.status(403).json({ error: "Forbidden" });
-    }
 
     res.status(200).json(payment);
   } catch (error) {
@@ -104,18 +121,15 @@ export const getPaymentById = async (req, res) => {
 // ===== UPDATE PAYMENT =====
 export const updatePayment = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
 
     const payment = await Payment.findById(id);
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
-    const paymentUserId = payment.userId?._id || payment.userId;
-    if (req.user.role !== "admin" && String(paymentUserId) !== String(req.user._id)) {
+    if (req.user.role !== "admin" && String(payment.userId) !== String(req.user._id))
       return res.status(403).json({ error: "Forbidden" });
-    }
 
     const updated = await Payment.findByIdAndUpdate(id, req.body, { new: true, runValidators: true })
       .populate("userId", "-password");
@@ -130,18 +144,15 @@ export const updatePayment = async (req, res) => {
 // ===== DELETE PAYMENT =====
 export const deletePayment = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
 
     const payment = await Payment.findById(id);
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
-    const paymentUserId = payment.userId?._id || payment.userId;
-    if (req.user.role !== "admin" && String(paymentUserId) !== String(req.user._id)) {
+    if (req.user.role !== "admin" && String(payment.userId) !== String(req.user._id))
       return res.status(403).json({ error: "Forbidden" });
-    }
 
     await Payment.findByIdAndDelete(id);
     res.status(200).json({ message: "Payment deleted successfully" });
