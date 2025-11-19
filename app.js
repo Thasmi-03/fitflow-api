@@ -43,6 +43,8 @@ app.use("/api/partners", partnerRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/stylerclothes", stylerclothesRoutes);
 app.use("/api/partnerclothes", partnerclothesRoutes);
+
+
 app.use("/api/styler", stylerRoutes);
 app.use("/api/occasion", occasionRoutes);
 
