@@ -3,24 +3,18 @@ import mongoose from "mongoose";
 import { PartnerCloth } from "../models/partnerClothes.js";
 
 /** Check if valid ObjectId */
-const isValidObjectId = (id) => {
-  try {
-    return mongoose.Types.ObjectId.isValid(id);
-  } catch {
-    return false;
-  }
-};
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 /** Pagination helper */
-function parsePagination(query) {
+const parsePagination = (query) => {
   const page = Math.max(1, parseInt(query.page || "1", 10));
   const limit = Math.max(1, Math.min(100, parseInt(query.limit || "10", 10)));
   const skip = (page - 1) * limit;
   return { page, limit, skip };
-}
+};
 
 /** Parse sort string */
-function parseSort(sortStr) {
+const parseSort = (sortStr) => {
   if (!sortStr) return { createdAt: -1 };
   const sort = {};
   sortStr.split(",").forEach((part) => {
@@ -29,21 +23,22 @@ function parseSort(sortStr) {
     sort[field] = dir === "asc" ? 1 : -1;
   });
   return sort;
-}
+};
 
 /** Build filter from query */
-function buildFilterFromQuery(query, extras = {}) {
+const buildFilterFromQuery = (query, extras = {}) => {
   const filters = [];
   if (extras && Object.keys(extras).length) filters.push(extras);
 
   if (query.search) {
     const q = query.search.trim();
-    const or = [
-      { name: { $regex: q, $options: "i" } },
-      { color: { $regex: q, $options: "i" } },
-      { category: { $regex: q, $options: "i" } },
-    ];
-    filters.push({ $or: or });
+    filters.push({
+      $or: [
+        { name: { $regex: q, $options: "i" } },
+        { color: { $regex: q, $options: "i" } },
+        { category: { $regex: q, $options: "i" } },
+      ],
+    });
   }
 
   if (query.color) filters.push({ color: { $regex: query.color.trim(), $options: "i" } });
@@ -59,9 +54,9 @@ function buildFilterFromQuery(query, extras = {}) {
   if (filters.length === 1) return filters[0];
   if (filters.length > 1) return { $and: filters };
   return {};
-}
+};
 
-/** Create cloth */
+/** Create cloth (partner only) */
 export const createCloth = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -85,7 +80,7 @@ export const createCloth = async (req, res) => {
     res.status(201).json({ message: "Cloth created", cloth: saved });
   } catch (error) {
     console.error("Error in createCloth:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Server error: " + error.message });
   }
 };
 
@@ -98,6 +93,7 @@ export const getClothById = async (req, res) => {
     const cloth = await PartnerCloth.findById(id);
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
 
+    // Private cloth access
     if (cloth.visibility === "private") {
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const isOwner = String(cloth.ownerId) === String(req.user._id);
@@ -108,7 +104,7 @@ export const getClothById = async (req, res) => {
     res.status(200).json(cloth);
   } catch (error) {
     console.error("Error in getClothById:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Server error: " + error.message });
   }
 };
 
@@ -130,7 +126,7 @@ export const updateCloth = async (req, res) => {
     res.status(200).json({ message: "Cloth updated", cloth: updated });
   } catch (error) {
     console.error("Error in updateCloth:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Server error: " + error.message });
   }
 };
 
@@ -152,7 +148,7 @@ export const deleteCloth = async (req, res) => {
     res.status(200).json({ message: "Cloth deleted" });
   } catch (error) {
     console.error("Error in deleteCloth:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Server error: " + error.message });
   }
 };
 
@@ -161,26 +157,24 @@ export const getPublicCloths = async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
-    const extras = { visibility: "public", ownerType: "partner" };
-    const filter = buildFilterFromQuery(req.query, extras);
+    const filter = buildFilterFromQuery(req.query, { visibility: "public", ownerType: "partner" });
 
     const [total, clothes] = await Promise.all([
       PartnerCloth.countDocuments(filter),
       PartnerCloth.find(filter).sort(sort).skip(skip).limit(limit),
     ]);
 
-    const pages = Math.max(1, Math.ceil(total / limit));
     res.status(200).json({
-      meta: { total, page, limit, pages },
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
       data: clothes,
     });
   } catch (error) {
     console.error("Error in getPublicCloths:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Server error: " + error.message });
   }
 };
 
-/** List my cloths (partner) */
+/** List my cloths (partner only) */
 export const getMyCloths = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -188,22 +182,20 @@ export const getMyCloths = async (req, res) => {
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
 
-    const ownerExtras = { ownerId: new mongoose.Types.ObjectId(req.user._id) };
-    const filter = buildFilterFromQuery(req.query, ownerExtras);
+    const filter = buildFilterFromQuery(req.query, { ownerId: req.user._id });
 
     const [total, clothes] = await Promise.all([
       PartnerCloth.countDocuments(filter),
       PartnerCloth.find(filter).sort(sort).skip(skip).limit(limit),
     ]);
 
-    const pages = Math.max(1, Math.ceil(total / limit));
     res.status(200).json({
-      meta: { total, page, limit, pages },
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
       data: clothes,
     });
   } catch (error) {
     console.error("Error in getMyCloths:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Server error: " + error.message });
   }
 };
 
@@ -215,21 +207,20 @@ export const getSuggestions = async (req, res) => {
 
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
-    const extras = { visibility: "public", ownerType: "partner" };
-    const filter = buildFilterFromQuery(req.query, extras);
+
+    const filter = buildFilterFromQuery(req.query, { visibility: "public", ownerType: "partner" });
 
     const [total, suggestions] = await Promise.all([
       PartnerCloth.countDocuments(filter),
       PartnerCloth.find(filter).sort(sort).skip(skip).limit(limit),
     ]);
 
-    const pages = Math.max(1, Math.ceil(total / limit));
     res.status(200).json({
-      meta: { total, page, limit, pages },
+      meta: { total, page, limit, pages: Math.ceil(total / limit) },
       data: suggestions,
     });
   } catch (error) {
     console.error("Error in getSuggestions:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Server error: " + error.message });
   }
 };

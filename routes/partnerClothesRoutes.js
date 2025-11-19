@@ -1,6 +1,6 @@
 import express from "express";
 import { verifyToken } from "../middleware/auth.js";
-import { verifyRole } from "../middleware/admin.js";
+import { verifyRole } from "../middleware/role.js"; // <-- fixed
 import {
   createCloth,
   getPublicCloths,
@@ -8,7 +8,7 @@ import {
   getClothById,
   updateCloth,
   deleteCloth,
-  getSuggestions
+  getSuggestions,
 } from "../controllers/partnerClothesController.js";
 
 const router = express.Router();
@@ -17,15 +17,15 @@ const router = express.Router();
 router.get("/", getPublicCloths);
 
 // Partner routes
-router.post("/", verifyToken, verifyRole(["partner"]), createCloth);
-router.get("/mine", verifyToken, verifyRole(["partner"]), getMyCloths);
+router.post("/", verifyToken, verifyRole("partner"), createCloth);
+router.get("/mine", verifyToken, verifyRole("partner"), getMyCloths);
 
 // Styler route
-router.get("/suggestions", verifyToken, verifyRole(["styler"]), getSuggestions);
+router.get("/suggestions", verifyToken, verifyRole("styler"), getSuggestions);
 
 // Individual cloth routes
 router.get("/:id", getClothById);
-router.put("/:id", verifyToken, verifyRole(["partner"]), updateCloth);
-router.delete("/:id", verifyToken, verifyRole(["partner"]), deleteCloth);
+router.put("/:id", verifyToken, updateCloth); // owner/admin check inside controller
+router.delete("/:id", verifyToken, deleteCloth);
 
 export default router;
