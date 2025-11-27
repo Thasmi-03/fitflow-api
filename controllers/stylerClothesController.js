@@ -10,14 +10,12 @@ export const getMyStylerClothes = async (req, res) => {
 
     const { search, category, color, minPrice, maxPrice, page = 1, limit = 10 } = req.query;
 
-    // --- SAFER ownerId creation: use `new` and validate ---
     if (!isValidObjectId(req.user._id)) {
       console.warn("getMyStylerClothes: req.user._id is not a valid ObjectId:", req.user._id);
       return res.status(400).json({ error: "Invalid user id" });
     }
     const ownerId = new mongoose.Types.ObjectId(String(req.user._id));
 
-    // rely on ownerId only (schema doesn't have ownerType)
     const filter = { ownerId };
 
     if (category) filter.category = category;
@@ -75,7 +73,6 @@ export const createStylerCloth = async (req, res) => {
     const { name, color, category, price, image, visibility } = req.body;
     if (!name || !color || !category) return res.status(400).json({ error: "Missing required fields" });
 
-    // Ensure ownerId is valid ObjectId
     if (!isValidObjectId(req.user._id)) {
       console.warn("createStylerCloth: req.user._id is not a valid ObjectId:", req.user._id);
       return res.status(400).json({ error: "Invalid user id" });
@@ -88,7 +85,7 @@ export const createStylerCloth = async (req, res) => {
       category,
       price: price || 0,
       image: image || undefined,
-      ownerId, // pass ObjectId instance
+      ownerId, 
       visibility: visibility || "private",
     });
 

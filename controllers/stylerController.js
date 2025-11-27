@@ -4,7 +4,6 @@ import mongoose from "mongoose";
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 const allowedUpdateFields = ["name", "email", "phone", "country", "gender", "avatar", "metadata"];
 
-/** GET all stylers — ADMIN ONLY */
 export const getAllStylers = async (req, res) => {
   try {
     if (!req.user || req.user.role !== "admin") {
@@ -38,7 +37,6 @@ export const getAllStylers = async (req, res) => {
   }
 };
 
-/** GET styler by ID — owner (styler) or admin */
 export const getStylerById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -59,7 +57,6 @@ export const getStylerById = async (req, res) => {
   }
 };
 
-/** UPDATE styler — ONLY owner (styler) */
 export const updateStyler = async (req, res) => {
   try {
     const { id } = req.params;
@@ -71,11 +68,9 @@ export const updateStyler = async (req, res) => {
       return res.status(403).json({ error: "Cannot update other stylers." });
     }
 
-    // Block sensitive fields
     const blockedFields = ["password", "role", "_id", "createdAt", "updatedAt"];
     blockedFields.forEach(f => { if (f in req.body) delete req.body[f]; });
 
-    // Keep only allowed fields
     const updates = {};
     Object.keys(req.body || {}).forEach(key => {
       if (allowedUpdateFields.includes(key)) updates[key] = req.body[key];
@@ -98,7 +93,6 @@ export const updateStyler = async (req, res) => {
   }
 };
 
-/** DELETE styler — owner (styler) or admin */
 export const deleteStyler = async (req, res) => {
   try {
     const { id } = req.params;

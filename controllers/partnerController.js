@@ -2,34 +2,23 @@
 import mongoose from "mongoose";
 import Partner from "../models/partner.js";
 
-/** helpers */
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
-const allowedUpdateFields = ["name", "email", "phone", "address", "company", "avatar", "metadata"];
+ const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+ const allowedUpdateFields = ["name", "email", "phone", "address", "company", "avatar", "metadata"];
 
-/**
- * NOTE:
- * - POST (createPartner) and GET all (getAllPartners) are intentionally disabled (405).
- * - Only authenticated PARTNER (req.user.role === "partner") who owns the id (req.user._id === req.params.id)
- *   can GET their profile, UPDATE, or DELETE themselves.
- */
 
-/** GET all partners — DISABLED */
 export const getAllPartners = async (req, res) => {
   return res.status(405).json({ error: "GET /partners (all) is disabled." });
 };
 
-/** CREATE partner — DISABLED */
 export const createPartner = async (req, res) => {
   return res.status(405).json({ error: "POST /partners is disabled." });
 };
 
-/** Get partner by id — partner must be owner */
 export const getPartnerById = async (req, res) => {
   try {
     const { id } = req.params;
     if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID format" });
 
-    // Auth check
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     if (req.user.role !== "partner") {
       return res.status(403).json({ error: "Only partners can access partner profiles." });
@@ -48,13 +37,11 @@ export const getPartnerById = async (req, res) => {
   }
 };
 
-/** Update partner — ONLY partner owner can update (admin NOT allowed) */
 export const updatePartner = async (req, res) => {
   try {
     const { id } = req.params;
     if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID format" });
 
-    // Auth & role & ownership checks
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     if (req.user.role !== "partner") {
       return res.status(403).json({ error: "Only partners can update their profile." });
@@ -63,13 +50,11 @@ export const updatePartner = async (req, res) => {
       return res.status(403).json({ error: "Access denied: can only update your own profile." });
     }
 
-    // Block sensitive fields
     const blockedFields = ["password", "role", "_id", "createdAt", "updatedAt"];
     blockedFields.forEach((f) => {
       if (f in req.body) delete req.body[f];
     });
 
-    // Build updates only from allowedUpdateFields
     const updates = {};
     Object.keys(req.body || {}).forEach((key) => {
       if (allowedUpdateFields.includes(key)) updates[key] = req.body[key];
@@ -103,7 +88,6 @@ export const updatePartner = async (req, res) => {
   }
 };
 
-/** Delete partner — ONLY partner owner can delete (admin NOT allowed) */
 export const deletePartner = async (req, res) => {
   try {
     const { id } = req.params;
@@ -120,7 +104,6 @@ export const deletePartner = async (req, res) => {
     const deleted = await Partner.findByIdAndDelete(id);
     if (!deleted) return res.status(404).json({ error: "Partner not found." });
 
-    // Optional: cascade-delete related resources (clothes, orders) here if you want.
 
     res.status(200).json({ message: "Partner deleted", partner: deleted });
   } catch (error) {

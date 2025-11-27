@@ -14,7 +14,6 @@ const PartnerClothSchema = new Schema(
     visibility: { type: String, enum: ["public", "private"], default: "public" },
     size: { type: String, required: true, trim: true },
 
-    // Extra fields
     material: { type: String, trim: true },
     season: [{ type: String, trim: true }],
     occasionTags: [{ type: String, trim: true }],
@@ -23,7 +22,6 @@ const PartnerClothSchema = new Schema(
   { timestamps: true }
 );
 
-// Text indexes for search
 PartnerClothSchema.index({ name: "text", color: "text", category: "text", brand: "text" });
 PartnerClothSchema.index({ price: 1 });
 PartnerClothSchema.index({ visibility: 1, ownerType: 1, createdAt: -1 });

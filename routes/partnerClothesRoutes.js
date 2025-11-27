@@ -1,6 +1,6 @@
 import express from "express";
 import { verifyToken } from "../middleware/auth.js";
-import { verifyRole } from "../middleware/role.js"; // <-- fixed
+import { verifyRole } from "../middleware/role.js"; 
 import {
   createCloth,
   getPublicCloths,
@@ -25,7 +25,7 @@ router.get("/suggestions", verifyToken, verifyRole("styler"), getSuggestions);
 
 // Individual cloth routes
 router.get("/:id", getClothById);
-router.put("/:id", verifyToken, updateCloth); // owner/admin check inside controller
+router.put("/:id", verifyToken, updateCloth); 
 router.delete("/:id", verifyToken, deleteCloth);
 
 export default router;

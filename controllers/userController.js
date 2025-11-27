@@ -53,13 +53,9 @@ export const getUserById = async (req, res) => {
   }
 };
 
-/**
- * Get profile for the logged-in user (requires verifyToken middleware)
- * - verifyToken must set req.user (e.g., req.user.id or req.user._id)
- */
+
 export const getMyProfile = async (req, res) => {
   try {
-    // support both shapes: req.user.id or req.user._id
     const userId = req.user?.id || req.user?._id;
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
@@ -75,9 +71,7 @@ export const getMyProfile = async (req, res) => {
   }
 };
 
-/**
- * Create a new user (admin)
- */
+
 export const createUser = async (req, res) => {
   try {
     const newUser = new User(req.body);
@@ -100,9 +94,7 @@ export const createUser = async (req, res) => {
   }
 };
 
-/**
- * Update user by ID (admin)
- */
+
 export const updateUser = async (req, res) => {
   try {
     const id = req.params.id;
@@ -132,9 +124,7 @@ export const updateUser = async (req, res) => {
   }
 };
 
-/**
- * Delete user by ID (admin)
- */
+
 export const deleteUser = async (req, res) => {
   try {
     const id = req.params.id;
