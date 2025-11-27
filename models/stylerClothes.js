@@ -11,6 +11,7 @@ const StylerClothesSchema = new Schema(
 
     
     note: { type: String, trim: true, default: "" },
+    occasionTags: [{ type: String, trim: true }],
 
     ownerId: {
       type: Schema.Types.ObjectId,

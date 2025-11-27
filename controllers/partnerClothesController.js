@@ -37,12 +37,19 @@ const buildFilterFromQuery = (query, extras = {}) => {
         { name: { $regex: q, $options: "i" } },
         { color: { $regex: q, $options: "i" } },
         { category: { $regex: q, $options: "i" } },
+        { brand: { $regex: q, $options: "i" } },
       ],
     });
   }
 
-  if (query.color) filters.push({ color: { $regex: query.color.trim(), $options: "i" } });
-  if (query.category) filters.push({ category: { $regex: query.category.trim(), $options: "i" } });
+  if (query.color)
+    filters.push({ color: { $regex: query.color.trim(), $options: "i" } });
+  if (query.category)
+    filters.push({
+      category: { $regex: query.category.trim(), $options: "i" },
+    });
+  if (query.brand)
+    filters.push({ brand: { $regex: query.brand.trim(), $options: "i" } });
 
   if (query.minPrice || query.maxPrice) {
     const price = {};
@@ -60,10 +67,31 @@ const buildFilterFromQuery = (query, extras = {}) => {
 export const createCloth = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-    if (req.user.role !== "partner") return res.status(403).json({ error: "Partner role required" });
+    if (req.user.role !== "partner")
+      return res.status(403).json({ error: "Partner role required" });
 
-    const { name, color, category, price, image, visibility } = req.body;
-    if (!name || !color || !category) return res.status(400).json({ error: "Missing required fields" });
+    const {
+      name,
+      color,
+      category,
+      price,
+      image,
+      visibility,
+      brand,
+      size,
+      material,
+      season,
+      occasionTags,
+      wearable,
+    } = req.body;
+
+    if (!name || !color || !category || !brand || !size) {
+      return res
+        .status(400)
+        .json({
+          error: "Missing required fields (name, color, category, brand, size)",
+        });
+    }
 
     const cloth = new PartnerCloth({
       name,
@@ -71,9 +99,15 @@ export const createCloth = async (req, res) => {
       category,
       price: price || 0,
       image: image || "https://yourcdn.com/default-cloth.jpg",
+      brand,
+      size,
       ownerType: "partner",
       ownerId: req.user._id,
       visibility: visibility || "public",
+      material: material || "",
+      season: season || [],
+      occasionTags: occasionTags || [],
+      wearable: wearable !== undefined ? wearable : true,
     });
 
     const saved = await cloth.save();
@@ -88,17 +122,18 @@ export const createCloth = async (req, res) => {
 export const getClothById = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (!isValidObjectId(id))
+      return res.status(400).json({ error: "Invalid ID" });
 
     const cloth = await PartnerCloth.findById(id);
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
 
-    // Private cloth access
     if (cloth.visibility === "private") {
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
       const isOwner = String(cloth.ownerId) === String(req.user._id);
       const isAdmin = req.user.role === "admin";
-      if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied" });
+      if (!isOwner && !isAdmin)
+        return res.status(403).json({ error: "Access denied" });
     }
 
     res.status(200).json(cloth);
@@ -108,11 +143,12 @@ export const getClothById = async (req, res) => {
   }
 };
 
-/** Update cloth */
+/** Update cloth (partner/admin only) */
 export const updateCloth = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (!isValidObjectId(id))
+      return res.status(400).json({ error: "Invalid ID" });
 
     const cloth = await PartnerCloth.findById(id);
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
@@ -120,9 +156,32 @@ export const updateCloth = async (req, res) => {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     const isOwner = String(cloth.ownerId) === String(req.user._id);
     const isAdmin = req.user.role === "admin";
-    if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied" });
+    if (!isOwner && !isAdmin)
+      return res.status(403).json({ error: "Access denied" });
 
-    const updated = await PartnerCloth.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
+    const allowedFields = [
+      "name",
+      "color",
+      "category",
+      "price",
+      "image",
+      "visibility",
+      "brand",
+      "size",
+      "material",
+      "season",
+      "occasionTags",
+      "wearable",
+    ];
+    const updates = {};
+    allowedFields.forEach((field) => {
+      if (req.body[field] !== undefined) updates[field] = req.body[field];
+    });
+
+    const updated = await PartnerCloth.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    });
     res.status(200).json({ message: "Cloth updated", cloth: updated });
   } catch (error) {
     console.error("Error in updateCloth:", error);
@@ -130,11 +189,12 @@ export const updateCloth = async (req, res) => {
   }
 };
 
-/** Delete cloth */
+/** Delete cloth (partner/admin only) */
 export const deleteCloth = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
+    if (!isValidObjectId(id))
+      return res.status(400).json({ error: "Invalid ID" });
 
     const cloth = await PartnerCloth.findById(id);
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
@@ -142,7 +202,8 @@ export const deleteCloth = async (req, res) => {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     const isOwner = String(cloth.ownerId) === String(req.user._id);
     const isAdmin = req.user.role === "admin";
-    if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied" });
+    if (!isOwner && !isAdmin)
+      return res.status(403).json({ error: "Access denied" });
 
     await PartnerCloth.findByIdAndDelete(id);
     res.status(200).json({ message: "Cloth deleted" });
@@ -157,7 +218,10 @@ export const getPublicCloths = async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
-    const filter = buildFilterFromQuery(req.query, { visibility: "public", ownerType: "partner" });
+    const filter = buildFilterFromQuery(req.query, {
+      visibility: "public",
+      ownerType: "partner",
+    });
 
     const [total, clothes] = await Promise.all([
       PartnerCloth.countDocuments(filter),
@@ -203,12 +267,16 @@ export const getMyCloths = async (req, res) => {
 export const getSuggestions = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-    if (req.user.role !== "styler") return res.status(403).json({ error: "Styler role required" });
+    if (req.user.role !== "styler")
+      return res.status(403).json({ error: "Styler role required" });
 
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
 
-    const filter = buildFilterFromQuery(req.query, { visibility: "public", ownerType: "partner" });
+    const filter = buildFilterFromQuery(req.query, {
+      visibility: "public",
+      ownerType: "partner",
+    });
 
     const [total, suggestions] = await Promise.all([
       PartnerCloth.countDocuments(filter),

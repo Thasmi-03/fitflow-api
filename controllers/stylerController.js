@@ -1,8 +1,16 @@
 import { Styler } from "../models/styler.js";
 import mongoose from "mongoose";
 
+const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+const allowedUpdateFields = ["name", "email", "phone", "country", "gender", "avatar", "metadata"];
+
+/** GET all stylers — ADMIN ONLY */
 export const getAllStylers = async (req, res) => {
   try {
+    if (!req.user || req.user.role !== "admin") {
+      return res.status(403).json({ error: "Only admin can access all stylers." });
+    }
+
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 10, 50);
     const skip = (page - 1) * limit;
@@ -13,7 +21,6 @@ export const getAllStylers = async (req, res) => {
     if (req.query.gender) filter.gender = req.query.gender;
 
     const total = await Styler.countDocuments(filter);
-
     const stylers = await Styler.find(filter)
       .skip(skip)
       .limit(limit)
@@ -31,15 +38,20 @@ export const getAllStylers = async (req, res) => {
   }
 };
 
-// Get a styler by ID
+/** GET styler by ID — owner (styler) or admin */
 export const getStylerById = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id))
-      return res.status(400).json({ error: "Invalid ID format" });
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID format" });
 
-    const styler = await Styler.findById(req.params.id);
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
 
+    const styler = await Styler.findById(id);
     if (!styler) return res.status(404).json({ error: "Styler not found." });
+
+    const isOwner = req.user.role === "styler" && String(req.user._id) === String(id);
+    const isAdmin = req.user.role === "admin";
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied." });
 
     res.status(200).json(styler);
   } catch (error) {
@@ -47,67 +59,60 @@ export const getStylerById = async (req, res) => {
   }
 };
 
-// Create a new styler
-export const createStyler = async (req, res) => {
-  try {
-    const newStyler = new Styler(req.body);
-    const savedStyler = await newStyler.save();
-    res.status(201).json({ message: "Styler created", styler: savedStyler });
-  } catch (error) {
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map(e => {
-        const message = e.message;
-        if (message.includes("is required")) {
-          return message.replace(/Path `(.+)` is required\./, "$1 is required");
-        }
-        return message;
-      });
-      return res.status(400).json({ error: errors.join(", ") });
-    }
-    res.status(500).json({ error: error.message });
-  }
-};
-
-// Update a styler by ID
+/** UPDATE styler — ONLY owner (styler) */
 export const updateStyler = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id))
-      return res.status(400).json({ error: "Invalid ID format" });
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID format" });
+    if (!req.user || req.user.role !== "styler") {
+      return res.status(403).json({ error: "Only styler can update their profile." });
+    }
+    if (String(req.user._id) !== String(id)) {
+      return res.status(403).json({ error: "Cannot update other stylers." });
+    }
 
-    const updatedStyler = await Styler.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
+    // Block sensitive fields
+    const blockedFields = ["password", "role", "_id", "createdAt", "updatedAt"];
+    blockedFields.forEach(f => { if (f in req.body) delete req.body[f]; });
+
+    // Keep only allowed fields
+    const updates = {};
+    Object.keys(req.body || {}).forEach(key => {
+      if (allowedUpdateFields.includes(key)) updates[key] = req.body[key];
     });
 
-    if (!updatedStyler) return res.status(404).json({ error: "Styler not found." });
-
-    res.status(200).json({ message: "Styler updated", styler: updatedStyler });
-  } catch (error) {
-    if (error.name === "ValidationError") {
-      const errors = Object.values(error.errors).map(e => {
-        const message = e.message;
-        if (message.includes("is required")) {
-          return message.replace(/Path `(.+)` is required\./, "$1 is required");
-        }
-        return message;
-      });
-      return res.status(400).json({ error: errors.join(", ") });
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No valid fields to update." });
     }
+
+    const updated = await Styler.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+      context: "query",
+    });
+
+    if (!updated) return res.status(404).json({ error: "Styler not found." });
+    res.status(200).json({ message: "Styler updated", styler: updated });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Delete a styler by ID
+/** DELETE styler — owner (styler) or admin */
 export const deleteStyler = async (req, res) => {
   try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id))
-      return res.status(400).json({ error: "Invalid ID format" });
+    const { id } = req.params;
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID format" });
+    if (!req.user) return res.status(401).json({ error: "Unauthorized" });
 
-    const deletedStyler = await Styler.findByIdAndDelete(req.params.id);
+    const isOwner = req.user.role === "styler" && String(req.user._id) === String(id);
+    const isAdmin = req.user.role === "admin";
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied." });
 
-    if (!deletedStyler) return res.status(404).json({ error: "Styler not found." });
+    const deleted = await Styler.findByIdAndDelete(id);
+    if (!deleted) return res.status(404).json({ error: "Styler not found." });
 
-    res.status(200).json({ message: "Styler deleted", styler: deletedStyler });
+    res.status(200).json({ message: "Styler deleted", styler: deleted });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
