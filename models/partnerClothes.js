@@ -1,26 +1,48 @@
+// Api/models/partnerClothes.js
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
 const PartnerClothSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
-    image: { type: String, trim: true, default: "https://yourcdn.com/default-cloth.jpg" },
-    color: { type: String, required: true, trim: true },
-    category: { type: String, required: true, trim: true },
-    brand: { type: String, required: true, trim: true },
-    price: { type: Number, default: 0, min: 0 },
-    ownerType: { type: String, enum: ["partner"], default: "partner" },
-    ownerId: { type: Schema.Types.ObjectId, ref: "Partner", required: true, index: true },
-    visibility: { type: String, enum: ["public", "private"], default: "public" },
+
+    image: {
+      type: String,
+      trim: true,
+      default: "https://yourcdn.com/default-cloth.jpg"
+    },
+
+    description: { type: String, trim: true },
     size: { type: String, required: true, trim: true },
 
-    material: { type: String, trim: true },
-    season: [{ type: String, trim: true }],
-    occasionTags: [{ type: String, trim: true }],
-    wearable: { type: Boolean, default: true },
+    color: { type: String, required: true, trim: true },
+    category: { type: String, required: true, trim: true },
+
+    
+    brand: { type: String, required: true, trim: true },
+
+    price: { type: Number, default: 0, min: 0 },
+    stock: { type: Number, default: 0, min: 0 },
+    sales: { type: Number, default: 0, min: 0 },
+
+    ownerType: { type: String, enum: ["partner"], default: "partner" },
+
+    ownerId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
+    visibility: {
+      type: String,
+      enum: ["public", "private"],
+      default: "public"
+    },
   },
   { timestamps: true }
 );
+
 
 PartnerClothSchema.index({ name: "text", color: "text", category: "text", brand: "text" });
 PartnerClothSchema.index({ price: 1 });

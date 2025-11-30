@@ -28,11 +28,19 @@ export const getMyStylerClothes = async (req, res) => {
 
     const skip = (Number(page) - 1) * Number(limit);
 
-    const clothes = await StylerClothes.find(filter)
+    const clothesData = await StylerClothes.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
       .lean();
+
+    const clothes = clothesData.map(item => ({
+      ...item,
+      id: item._id.toString(),
+      imageUrl: item.image,
+      description: item.note,
+      userId: item.ownerId.toString()
+    }));
 
     const total = await StylerClothes.countDocuments(filter);
     const totalPages = Math.ceil(total / Number(limit) || 1);
@@ -49,7 +57,7 @@ export const getStylerClothById = async (req, res) => {
     const { id } = req.params;
     if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
 
-    const cloth = await StylerClothes.findById(id);
+    const cloth = await StylerClothes.findById(id).lean();
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
 
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
@@ -58,7 +66,15 @@ export const getStylerClothById = async (req, res) => {
     const isAdmin = req.user.role === "admin";
     if (!isOwner && !isAdmin) return res.status(403).json({ error: "Forbidden" });
 
-    res.status(200).json(cloth);
+    const transformedCloth = {
+      ...cloth,
+      id: cloth._id.toString(),
+      imageUrl: cloth.image,
+      description: cloth.note,
+      userId: cloth.ownerId.toString()
+    };
+
+    res.status(200).json({ clothes: transformedCloth });
   } catch (error) {
     console.error("getStylerClothById error:", error);
     res.status(500).json({ error: error.message });
@@ -70,8 +86,10 @@ export const createStylerCloth = async (req, res) => {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     if (req.user.role !== "styler") return res.status(403).json({ error: "Styler role required" });
 
-    const { name, color, category, price, image, visibility } = req.body;
-    if (!name || !color || !category) return res.status(400).json({ error: "Missing required fields" });
+    const { name, color, category, skinTone, gender, age, image, note } = req.body;
+    if (!name || !color || !category || !skinTone || !gender) {
+      return res.status(400).json({ error: "Missing required fields: name, color, category, skinTone, gender" });
+    }
 
     if (!isValidObjectId(req.user._id)) {
       console.warn("createStylerCloth: req.user._id is not a valid ObjectId:", req.user._id);
@@ -83,14 +101,26 @@ export const createStylerCloth = async (req, res) => {
       name,
       color,
       category,
-      price: price || 0,
+      skinTone,
+      gender,
+      age: age || undefined,
       image: image || undefined,
-      ownerId, 
-      visibility: visibility || "private",
+      note: note || "",
+      ownerId,
+      visibility: "private",
     });
 
     const saved = await cloth.save();
-    res.status(201).json({ message: "Cloth created", cloth: saved });
+    
+    const transformedCloth = {
+      ...saved.toObject(),
+      id: saved._id.toString(),
+      imageUrl: saved.image,
+      description: saved.note,
+      userId: saved.ownerId.toString()
+    };
+    
+    res.status(201).json({ message: "Cloth created", clothes: transformedCloth });
   } catch (error) {
     console.error("createStylerCloth error:", error);
     res.status(500).json({ error: error.message });
@@ -111,8 +141,18 @@ export const updateStylerCloth = async (req, res) => {
     const isAdmin = req.user.role === "admin";
     if (!isOwner && !isAdmin) return res.status(403).json({ error: "Forbidden" });
 
-    const updated = await StylerClothes.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
-    res.status(200).json({ message: "Cloth updated", cloth: updated });
+    const updated = await StylerClothes.findByIdAndUpdate(id, req.body, { new: true, runValidators: true }).lean();
+    
+    
+    const transformedCloth = {
+      ...updated,
+      id: updated._id.toString(),
+      imageUrl: updated.image,
+      description: updated.note,
+      userId: updated.ownerId.toString()
+    };
+    
+    res.status(200).json({ message: "Cloth updated", clothes: transformedCloth });
   } catch (error) {
     console.error("updateStylerCloth error:", error);
     res.status(500).json({ error: error.message });

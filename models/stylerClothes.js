@@ -6,12 +6,34 @@ const StylerClothesSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     image: { type: String, trim: true },
-    color: { type: String, required: true, trim: true },
-    category: { type: String, required: true, trim: true },
-
-    
+    color: { 
+      type: String, 
+      required: true, 
+      trim: true,
+      enum: ['red', 'blue', 'green', 'yellow', 'black', 'white', 'gray', 'brown', 'pink', 'purple', 'orange', 'beige', 'navy', 'maroon', 'teal', 'coral', 'multi']
+    },
+    category: { 
+      type: String, 
+      required: true, 
+      trim: true,
+      enum: ['dress', 'shirt', 'pants', 'jacket', 'skirt', 'top', 'shorts', 'suit', 'gown', 'blazer', 'sweater', 'coat']
+    },
+    skinTone: {
+      type: String,
+      enum: ['fair', 'light', 'medium', 'tan', 'deep', 'dark'],
+      required: true
+    },
+    gender: {
+      type: String,
+      enum: ['male', 'female', 'unisex'],
+      required: true
+    },
+    age: {
+      type: Number,
+      min: 0,
+      max: 120
+    },
     note: { type: String, trim: true, default: "" },
-    occasionTags: [{ type: String, trim: true }],
 
     ownerId: {
       type: Schema.Types.ObjectId,
