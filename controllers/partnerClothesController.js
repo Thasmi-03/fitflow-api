@@ -2,10 +2,8 @@
 import mongoose from "mongoose";
 import { PartnerCloth } from "../models/partnerClothes.js";
 
-/** Check if valid ObjectId */
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
-/** Pagination helper */
 const parsePagination = (query) => {
   const page = Math.max(1, parseInt(query.page || "1", 10));
   const limit = Math.max(1, Math.min(100, parseInt(query.limit || "10", 10)));
@@ -13,7 +11,6 @@ const parsePagination = (query) => {
   return { page, limit, skip };
 };
 
-/** Parse sort string */
 const parseSort = (sortStr) => {
   if (!sortStr) return { createdAt: -1 };
   const sort = {};
@@ -25,7 +22,6 @@ const parseSort = (sortStr) => {
   return sort;
 };
 
-/** Build filter from query */
 const buildFilterFromQuery = (query, extras = {}) => {
   const filters = [];
   if (extras && Object.keys(extras).length) filters.push(extras);
@@ -37,19 +33,12 @@ const buildFilterFromQuery = (query, extras = {}) => {
         { name: { $regex: q, $options: "i" } },
         { color: { $regex: q, $options: "i" } },
         { category: { $regex: q, $options: "i" } },
-        { brand: { $regex: q, $options: "i" } },
       ],
     });
   }
 
-  if (query.color)
-    filters.push({ color: { $regex: query.color.trim(), $options: "i" } });
-  if (query.category)
-    filters.push({
-      category: { $regex: query.category.trim(), $options: "i" },
-    });
-  if (query.brand)
-    filters.push({ brand: { $regex: query.brand.trim(), $options: "i" } });
+  if (query.color) filters.push({ color: { $regex: query.color.trim(), $options: "i" } });
+  if (query.category) filters.push({ category: { $regex: query.category.trim(), $options: "i" } });
 
   if (query.minPrice || query.maxPrice) {
     const price = {};
@@ -67,47 +56,36 @@ const buildFilterFromQuery = (query, extras = {}) => {
 export const createCloth = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-    if (req.user.role !== "partner")
-      return res.status(403).json({ error: "Partner role required" });
+    if (req.user.role !== "partner") return res.status(403).json({ error: "Partner role required" });
 
-    const {
-      name,
-      color,
-      category,
-      price,
-      image,
-      visibility,
-      brand,
-      size,
-      material,
-      season,
-      occasionTags,
-      wearable,
-    } = req.body;
-
+    const { name, color, category, price, image, visibility, brand, stock, description, size } = req.body;
+    console.log("createCloth req.body:", req.body);
+    console.log("createCloth req.user:", req.user);
+    
     if (!name || !color || !category || !brand || !size) {
-      return res
-        .status(400)
-        .json({
-          error: "Missing required fields (name, color, category, brand, size)",
-        });
+      const missing = [];
+      if (!name) missing.push("name");
+      if (!color) missing.push("color");
+      if (!category) missing.push("category");
+      if (!brand) missing.push("brand");
+      if (!size) missing.push("size");
+      console.log("Missing required fields:", missing);
+      return res.status(400).json({ error: `Missing required fields: ${missing.join(", ")}` });
     }
 
     const cloth = new PartnerCloth({
       name,
       color,
       category,
-      price: price || 0,
-      image: image || "https://yourcdn.com/default-cloth.jpg",
       brand,
+      description,
       size,
+      price: price || 0,
+      stock: stock || 0,
+      image: image || "https://yourcdn.com/default-cloth.jpg",
       ownerType: "partner",
       ownerId: req.user._id,
       visibility: visibility || "public",
-      material: material || "",
-      season: season || [],
-      occasionTags: occasionTags || [],
-      wearable: wearable !== undefined ? wearable : true,
     });
 
     const saved = await cloth.save();
@@ -122,18 +100,17 @@ export const createCloth = async (req, res) => {
 export const getClothById = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isValidObjectId(id))
-      return res.status(400).json({ error: "Invalid ID" });
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
 
-    const cloth = await PartnerCloth.findById(id);
+    const cloth = await PartnerCloth.findById(id).populate('ownerId', 'name location phone email');
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
 
+    // Private cloth access
     if (cloth.visibility === "private") {
       if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-      const isOwner = String(cloth.ownerId) === String(req.user._id);
+      const isOwner = String(cloth.ownerId._id || cloth.ownerId) === String(req.user._id);
       const isAdmin = req.user.role === "admin";
-      if (!isOwner && !isAdmin)
-        return res.status(403).json({ error: "Access denied" });
+      if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied" });
     }
 
     res.status(200).json(cloth);
@@ -143,12 +120,11 @@ export const getClothById = async (req, res) => {
   }
 };
 
-/** Update cloth (partner/admin only) */
+/** Update cloth */
 export const updateCloth = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isValidObjectId(id))
-      return res.status(400).json({ error: "Invalid ID" });
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
 
     const cloth = await PartnerCloth.findById(id);
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
@@ -156,32 +132,9 @@ export const updateCloth = async (req, res) => {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     const isOwner = String(cloth.ownerId) === String(req.user._id);
     const isAdmin = req.user.role === "admin";
-    if (!isOwner && !isAdmin)
-      return res.status(403).json({ error: "Access denied" });
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied" });
 
-    const allowedFields = [
-      "name",
-      "color",
-      "category",
-      "price",
-      "image",
-      "visibility",
-      "brand",
-      "size",
-      "material",
-      "season",
-      "occasionTags",
-      "wearable",
-    ];
-    const updates = {};
-    allowedFields.forEach((field) => {
-      if (req.body[field] !== undefined) updates[field] = req.body[field];
-    });
-
-    const updated = await PartnerCloth.findByIdAndUpdate(id, updates, {
-      new: true,
-      runValidators: true,
-    });
+    const updated = await PartnerCloth.findByIdAndUpdate(id, req.body, { new: true, runValidators: true });
     res.status(200).json({ message: "Cloth updated", cloth: updated });
   } catch (error) {
     console.error("Error in updateCloth:", error);
@@ -189,12 +142,11 @@ export const updateCloth = async (req, res) => {
   }
 };
 
-/** Delete cloth (partner/admin only) */
+/** Delete cloth */
 export const deleteCloth = async (req, res) => {
   try {
     const { id } = req.params;
-    if (!isValidObjectId(id))
-      return res.status(400).json({ error: "Invalid ID" });
+    if (!isValidObjectId(id)) return res.status(400).json({ error: "Invalid ID" });
 
     const cloth = await PartnerCloth.findById(id);
     if (!cloth) return res.status(404).json({ error: "Cloth not found" });
@@ -202,8 +154,7 @@ export const deleteCloth = async (req, res) => {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
     const isOwner = String(cloth.ownerId) === String(req.user._id);
     const isAdmin = req.user.role === "admin";
-    if (!isOwner && !isAdmin)
-      return res.status(403).json({ error: "Access denied" });
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: "Access denied" });
 
     await PartnerCloth.findByIdAndDelete(id);
     res.status(200).json({ message: "Cloth deleted" });
@@ -218,14 +169,15 @@ export const getPublicCloths = async (req, res) => {
   try {
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
-    const filter = buildFilterFromQuery(req.query, {
-      visibility: "public",
-      ownerType: "partner",
-    });
+    const filter = buildFilterFromQuery(req.query, { visibility: "public", ownerType: "partner" });
 
     const [total, clothes] = await Promise.all([
       PartnerCloth.countDocuments(filter),
-      PartnerCloth.find(filter).sort(sort).skip(skip).limit(limit),
+      PartnerCloth.find(filter)
+        .populate('ownerId', 'name location phone email')
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
     ]);
 
     res.status(200).json({
@@ -267,16 +219,12 @@ export const getMyCloths = async (req, res) => {
 export const getSuggestions = async (req, res) => {
   try {
     if (!req.user) return res.status(401).json({ error: "Unauthorized" });
-    if (req.user.role !== "styler")
-      return res.status(403).json({ error: "Styler role required" });
+    if (req.user.role !== "styler") return res.status(403).json({ error: "Styler role required" });
 
     const { page, limit, skip } = parsePagination(req.query);
     const sort = parseSort(req.query.sort);
 
-    const filter = buildFilterFromQuery(req.query, {
-      visibility: "public",
-      ownerType: "partner",
-    });
+    const filter = buildFilterFromQuery(req.query, { visibility: "public", ownerType: "partner" });
 
     const [total, suggestions] = await Promise.all([
       PartnerCloth.countDocuments(filter),
